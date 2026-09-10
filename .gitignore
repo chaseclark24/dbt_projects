@@ -1,0 +1,28 @@
+# Python environment
+.venv/
+__pycache__/
+*.py[cod]
+
+# dbt-generated artifacts
+**/target/
+**/dbt_packages/
+**/logs/
+
+# Local databases
+*.duckdb
+*.duckdb.wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Credentials and machine-specific configuration
+**/.env
+profiles.yml
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Local planning notes
+notes.txt
+projects.txt

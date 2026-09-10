@@ -1,0 +1,8 @@
+version: 2
+
+sources:
+  - name: qdb_source
+    database: qdb_source
+    schema: main
+    tables:
+      - name: financials
