@@ -2,44 +2,150 @@ version: 2
 
 models:
   - name: stg_financials
-    description: "Cleaned financial records with one row per symbol and reporting period."
+    description: >
+      Standardized financial records from the financials source. The model
+      preserves the source grain of one row per company symbol and reporting period.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "symbol || '-' || cast(period_end as varchar)"
     columns:
       - name: symbol
-        description: "Public market ticker symbol."
+        description: "Public market ticker symbol identifying the company."
         data_tests:
           - not_null
 
       - name: fiscal_year
-        description: "Fiscal year represented by the financial record."
+        description: "Fiscal year associated with the financial record."
         data_tests:
           - not_null
 
       - name: period_end
-        description: "End date of the reporting period."
+        description: "End date of the financial reporting period."
         data_tests:
           - not_null
 
+      - name: total_revenue
+        description: "Total revenue reported for the financial period."
+        data_tests:
+          - not_null
+
+      - name: total_revenue_prev
+        description: "Source-provided revenue for the comparison period; null when no comparison value is available."
+
+      - name: net_income
+        description: "Net income reported for the financial period."
+        data_tests:
+          - not_null
+
+      - name: total_cash
+        description: "Total cash reported as of the associated cash measurement date."
+        data_tests:
+          - not_null
+
+      - name: total_debt
+        description: "Total debt reported in the financial record."
+        data_tests:
+          - not_null
+
+      - name: operating_cash_flow
+        description: "Cash generated or used by normal business operations for the source-defined measurement period."
+        data_tests:
+          - not_null
+
+      - name: going_concern
+        description: "Source-provided flag indicating whether the record reports a going-concern condition."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
+
       - name: updated_at
-        description: "Timestamp when the source record was last updated."
+        description: "Timestamp when the source financial record was last updated."
+        data_tests:
+          - not_null
+
+      - name: cash_as_of
+        description: "Date on which the reported total-cash balance was measured."
+        data_tests:
+          - not_null
+
+      - name: operating_cash_flow_as_of
+        description: "End date of the period covered by the reported operating cash flow; null when the source does not provide one."
+
+      - name: operating_cash_flow_basis
+        description: "Source-provided period basis for operating cash flow, such as trailing twelve months."
         data_tests:
           - not_null
 
   - name: mart_latest_financial_health
-    description: "Latest available financial record and health metrics for each company."
+    description: >
+      Latest available financial record for each company, enriched with derived
+      revenue-growth, profitability, liquidity, and cash-flow health measures.
+      The model has one row per public market ticker symbol.
     columns:
       - name: symbol
-        description: "Public market ticker symbol and primary key of this mart."
+        description: "Public market ticker symbol and primary key of this model."
         data_tests:
           - not_null
           - unique
+          - relationships:
+              arguments:
+                to: ref('stg_company_metadata')
+                field: symbol
+
+      - name: fiscal_year
+        description: "Fiscal year associated with the latest available financial record."
+        data_tests:
+          - not_null
 
       - name: period_end
-        description: "Latest reporting period available for the company."
+        description: "End date of the latest available financial reporting period."
+        data_tests:
+          - not_null
+
+      - name: total_revenue
+        description: "Total revenue reported for the latest available financial period."
+        data_tests:
+          - not_null
+
+      - name: total_revenue_prev
+        description: "Source-provided revenue for the comparison period; null when no comparison value is available."
+
+      - name: revenue_growth_pct
+        description: "Percentage change from comparison-period revenue to latest-period revenue; null when comparison revenue is unavailable or zero."
+
+      - name: net_income
+        description: "Net income reported for the latest available financial period."
+        data_tests:
+          - not_null
+
+      - name: total_cash
+        description: "Total cash reported for the latest available financial record."
+        data_tests:
+          - not_null
+
+      - name: total_debt
+        description: "Total debt reported for the latest available financial record."
+        data_tests:
+          - not_null
+
+      - name: operating_cash_flow
+        description: "Cash generated or used by normal business operations for the source-defined measurement period."
+        data_tests:
+          - not_null
+
+      - name: net_margin_pct
+        description: "Net income as a percentage of total revenue; null when revenue is unavailable or zero."
+
+      - name: net_cash
+        description: "Total cash minus total debt for the latest available financial record."
         data_tests:
           - not_null
 
       - name: has_negative_cash_flow
-        description: "One when operating cash flow is negative, zero when nonnegative, and null when unavailable."
+        description: "One when operating cash flow is negative, zero when nonnegative, and null when operating cash flow is unavailable."
         data_tests:
           - accepted_values:
               arguments:
@@ -47,43 +153,27 @@ models:
                 quote: false
 
       - name: going_concern
-        description: "Source-provided going-concern flag."
+        description: "Source-provided flag indicating whether the latest financial record reports a going-concern condition."
         data_tests:
           - accepted_values:
               arguments:
                 values: [0, 1]
                 quote: false
 
-      - name: revenue_growth_pct
-        description: "Percentage change from the source-provided previous revenue value. Null when previous revenue is unavailable or zero."
-
-      - name: net_margin_pct
-        description: "Percentage of margin. A comparison between revenue and net income"
-        data_tests:
-          - not_null
-
-      - name: net_cash
-        description: "A metric showing total_cash - total_debt"
-        data_tests:
-          - not_null
-
       - name: cash_as_of
-        description: "As of date for the cash metric"
+        description: "Date on which the reported total-cash balance was measured."
         data_tests:
           - not_null
 
       - name: operating_cash_flow_as_of
-        description: "As of date for the operating cash flow metric"
-        data_tests:
-          - not_null
+        description: "End date of the period covered by the reported operating cash flow; null when the source does not provide one."
 
       - name: operating_cash_flow_basis
-        description: "As of date for the cash metric"
+        description: "Source-provided period basis for operating cash flow, such as trailing twelve months."
         data_tests:
           - not_null
 
       - name: source_updated_at
-        description: "total cash generated by a company's normal, day-to-day business operations"
+        description: "Timestamp when the source financial record was last updated."
         data_tests:
           - not_null
-
