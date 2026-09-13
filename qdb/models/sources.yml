@@ -7,3 +7,4 @@ sources:
     tables:
       - name: financials
       - name: company_metadata
+      - name: price_history

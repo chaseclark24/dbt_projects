@@ -1,9 +1,9 @@
 # QDB dbt Project
 
 This project models a local, read-only snapshot of QuantumDB data with dbt and
-DuckDB. It standardizes company and financial source data, selects the latest
-financial record for each company, and produces a tested company dimension
-enriched with current financial-health measures.
+DuckDB. It standardizes company, financial, and price-history source data. Its
+marts provide current financial-health measures, a company dimension, daily
+stock-performance measures, and the latest available price for each symbol.
 
 The SQLite source database is intentionally excluded from Git. It is a local
 development input, not part of the repository.
@@ -27,6 +27,11 @@ qdb_source.company_metadata            |
         |                              |
         v                              |
 stg_company_metadata -----------------+
+```
+
+```text
+qdb_source.price_history -> stg_price_history -> mart_price_performance
+                                           \-> mart_latest_price
 ```
 
 ### `stg_financials`
@@ -84,6 +89,37 @@ those companies, the financial columns are legitimately `NULL`. Separate
 company-metadata and financial update timestamps retain the provenance of each
 side of the joined record.
 
+### `stg_price_history`
+
+This staging model casts the source `date` text to a DuckDB `DATE` named
+`price_date` and preserves the source symbol, open, high, low, close, and volume.
+
+Grain: one row per symbol and recorded price date.
+
+### `mart_price_performance`
+
+This mart keeps the staged daily price grain and calculates price changes within
+each symbol's history. `return_daily` compares the current close to the prior
+recorded close; `return_7_days` and `return_30_days` compare it to closes seven
+and 30 price rows earlier. These returns are fractions (multiply by 100 to
+display a percent), and the 7/30 offsets count recorded price rows rather than
+calendar days. A return is `NULL` when there is no prior close at that offset
+or the prior close is zero.
+
+`volume_30_day` sums volume for the current price date and the preceding 29
+calendar dates, partitioned by symbol. It is a calendar-day window, so it can
+contain fewer than 30 price rows when markets are closed.
+
+Grain: one row per symbol and recorded price date.
+
+### `mart_latest_price`
+
+This mart selects the row with the maximum available `price_date` for each
+symbol from `stg_price_history`, preserving that row's open, high, low, close,
+and volume. Latest refers to the local snapshot, which may lag live market data.
+
+Grain: one row per symbol with price history.
+
 ## Data-quality tests
 
 The project tests that:
@@ -95,11 +131,17 @@ The project tests that:
 - Cash-flow and going-concern flags contain only `0` or `1` when populated.
 - Every symbol in `mart_latest_financial_health` exists in
   `stg_company_metadata`.
+- Price-history staging and performance rows are unique at the symbol and price
+  date grain, with non-null keys. Staging close and volume are non-null because
+  the return and rolling-volume calculations depend on them.
+- `mart_latest_price` has one non-null symbol and price date per row and only
+  one row per symbol.
 
 Some values may legitimately be `NULL`. Revenue growth is unavailable when
 comparison revenue is missing or zero. Employee count and IPO date may be
 missing in company metadata, and the financial side of `mart_company_dim` may
-be missing because that model uses a left join.
+be missing because that model uses a left join. Early price rows also have
+legitimately null returns when the required earlier price row does not exist.
 
 ## Local setup
 
@@ -108,8 +150,9 @@ The project was developed with:
 - Python 3.12
 - dbt Core 1.12.3
 - dbt-duckdb 1.11.0
+- dbt-codegen 0.14.1 for generating YAML column-name scaffolds
 - DuckDB as the dbt target
-- A read-only SQLite attachment named `qdb_source`
+- Read-only SQLite attachments named `qdb_source` and `video_source`
 
 Create a dbt profile named `qdb` in your local `~/.dbt/profiles.yml`. The
 profile should point DuckDB at a local development database and attach the
@@ -125,13 +168,30 @@ qdb:
       schema: main
       threads: 4
       attach:
-        - path: "C:/path/to/quantumdb.sqlite"
+        - path: "C:/path/to/dbt/quantumdb.sqlite"
           type: sqlite
           alias: qdb_source
+          read_only: true
+        - path: "C:/path/to/dbt/youtube.db"
+          type: sqlite
+          alias: video_source
           read_only: true
 ```
 
 Neither `profiles.yml` nor the local database files should be committed.
+Run `..\.venv\Scripts\dbt.exe deps` from this directory to install the packages
+in `packages.yml` before using the codegen macros.
+
+The Windows task `dbt - Refresh QuantumDB snapshot` runs daily at 6:00 AM. It
+uses `../refresh_qdb_snapshot.py` to copy the newest completed backup from
+`D:/qdb backups` into the stable `../quantumdb.sqlite` file and to copy the
+working `qdb_video/analytics/youtube.db` into `../youtube.db`. Both copies are
+checked, standalone SQLite files. It fails if the current day's QDB backup is
+missing or a destination is open in DBeaver.
+
+To refresh manually, double-click `../refresh-snapshots.bat`. The run log is
+`../logs/refresh-qdb-snapshot.log`. Keep DBeaver closed during refresh; its
+connections can then always use the same two paths.
 
 ## Running the project
 
@@ -141,13 +201,25 @@ From the `qdb` directory, build the complete current lineage and run its tests:
 ..\.venv\Scripts\dbt.exe build --select +mart_company_dim
 ```
 
-The leading `+` selects `mart_company_dim` and all of its upstream dbt models,
-including both staging models and `mart_latest_financial_health`.
+Build and test the price-history lineage separately:
+
+```powershell
+..\.venv\Scripts\dbt.exe build --select +mart_price_performance +mart_latest_price
+```
+
+Each leading `+` includes that mart's upstream dbt models. Building both
+lineages also runs their selected data tests.
 
 Preview the final company dimension:
 
 ```powershell
 ..\.venv\Scripts\dbt.exe show --select mart_company_dim --limit 20
+```
+
+Preview the latest available price rows:
+
+```powershell
+..\.venv\Scripts\dbt.exe show --select mart_latest_price --limit 20
 ```
 
 Generate and view the dbt documentation and lineage graph:
@@ -164,16 +236,22 @@ Stop the documentation server with `Ctrl+C`.
 ```text
 qdb/
 |-- dbt_project.yml
+|-- packages.yml
+|-- package-lock.yml
 |-- models/
 |   |-- sources.yml
 |   |-- financial_health.yml
 |   |-- company_dim.yml
+|   |-- price_performance.yml
 |   |-- staging/
 |   |   |-- stg_financials.sql
-|   |   `-- stg_company_metadata.sql
+|   |   |-- stg_company_metadata.sql
+|   |   `-- stg_price_history.sql
 |   `-- marts/
 |       |-- mart_latest_financial_health.sql
-|       `-- mart_company_dim.sql
+|       |-- mart_company_dim.sql
+|       |-- mart_price_performance.sql
+|       `-- mart_latest_price.sql
 |-- analyses/
 |-- macros/
 |-- seeds/

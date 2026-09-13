@@ -1,0 +1,169 @@
+version: 2
+
+models:
+  - name: stg_price_history
+    description: >
+      Source price history with the source date cast to a DuckDB date. One row
+      represents one symbol on one recorded price date.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "symbol || '-' || cast(price_date as varchar)"
+    columns:
+      - name: symbol
+        data_type: varchar
+        description: "Source ticker symbol for the priced security."
+        data_tests:
+          - not_null
+
+      - name: price_date
+        data_type: date
+        description: "Calendar date of the source price record."
+        data_tests:
+          - not_null
+
+      - name: open
+        data_type: double
+        description: "Source-reported opening price for the recorded session."
+
+      - name: high
+        data_type: double
+        description: "Source-reported highest price for the recorded session."
+
+      - name: low
+        data_type: double
+        description: "Source-reported lowest price for the recorded session."
+
+      - name: close
+        data_type: double
+        description: "Source-reported closing price used as the return denominator."
+        data_tests:
+          - not_null
+
+      - name: volume
+        data_type: bigint
+        description: "Source-reported trading volume for the recorded session."
+        data_tests:
+          - not_null
+
+  - name: mart_price_performance
+    description: >
+      Daily price records with returns over prior recorded price rows and a
+      trailing 30-calendar-day volume total. One row represents one symbol on
+      one recorded price date; returns are fractions, not percentage points.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "symbol || '-' || cast(price_date as varchar)"
+    columns:
+      - name: symbol
+        data_type: varchar
+        description: "Ticker symbol whose price history defines each window."
+        data_tests:
+          - not_null
+
+      - name: price_date
+        data_type: date
+        description: "Calendar date of this symbol's source price record."
+        data_tests:
+          - not_null
+
+      - name: open
+        data_type: double
+        description: "Source-reported opening price for the recorded session."
+
+      - name: high
+        data_type: double
+        description: "Source-reported highest price for the recorded session."
+
+      - name: low
+        data_type: double
+        description: "Source-reported lowest price for the recorded session."
+
+      - name: close
+        data_type: double
+        description: "Source-reported closing price for this price record."
+
+      - name: volume
+        data_type: bigint
+        description: "Source-reported trading volume for this price record."
+
+      - name: close_7_days_ago
+        data_type: double
+        description: >
+          Closing price seven prior recorded rows for this symbol, which may
+          span more than seven calendar days. Null when fewer than seven prior
+          rows exist.
+
+      - name: close_30_days_ago
+        data_type: double
+        description: >
+          Closing price 30 prior recorded rows for this symbol, which may span
+          more than 30 calendar days. Null when fewer than 30 prior rows exist.
+
+      - name: return_daily
+        data_type: double
+        description: >
+          Fractional change from this symbol's previous recorded closing price
+          to the current close. Null for the first row or a zero prior close;
+          the prior record may be more than 24 hours earlier.
+
+      - name: return_7_days
+        data_type: double
+        description: >
+          Fractional change from the close seven prior price rows for this
+          symbol to the current close. Null without a prior row or when that
+          earlier close is zero; the interval is not seven calendar days.
+
+      - name: return_30_days
+        data_type: double
+        description: >
+          Fractional change from the close 30 prior price rows for this symbol
+          to the current close. Null without a prior row or when that earlier
+          close is zero; the interval is not 30 calendar days.
+
+      - name: volume_30_day
+        data_type: hugeint
+        description: >
+          Sum of this symbol's source volume from the current price date back
+          through the preceding 29 calendar dates, inclusive. Calendar dates
+          without a price record add no volume.
+
+  - name: mart_latest_price
+    description: >
+      Most recent available source price row by date for each symbol in the
+      local snapshot. One row represents one symbol; latest means the maximum
+      available price date, not necessarily today's market price.
+    columns:
+      - name: price_date
+        data_type: date
+        description: "Most recent available source price date for this symbol."
+        data_tests:
+          - not_null
+
+      - name: symbol
+        data_type: varchar
+        description: "Ticker symbol and primary key of this model."
+        data_tests:
+          - not_null
+          - unique
+
+      - name: open
+        data_type: double
+        description: "Opening price on the most recent available price date."
+
+      - name: high
+        data_type: double
+        description: "Highest price on the most recent available price date."
+
+      - name: low
+        data_type: double
+        description: "Lowest price on the most recent available price date."
+
+      - name: close
+        data_type: double
+        description: "Closing price on the most recent available price date."
+
+      - name: volume
+        data_type: bigint
+        description: "Trading volume on the most recent available price date."
