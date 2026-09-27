@@ -182,16 +182,9 @@ Neither `profiles.yml` nor the local database files should be committed.
 Run `..\.venv\Scripts\dbt.exe deps` from this directory to install the packages
 in `packages.yml` before using the codegen macros.
 
-The Windows task `dbt - Refresh QuantumDB snapshot` runs daily at 6:00 AM. It
-uses `../refresh_qdb_snapshot.py` to copy the newest completed backup from
-`D:/qdb backups` into the stable `../quantumdb.sqlite` file and to copy the
-working `qdb_video/analytics/youtube.db` into `../youtube.db`. Both copies are
-checked, standalone SQLite files. It fails if the current day's QDB backup is
-missing or a destination is open in DBeaver.
-
-To refresh manually, double-click `../refresh-snapshots.bat`. The run log is
-`../logs/refresh-qdb-snapshot.log`. Keep DBeaver closed during refresh; its
-connections can then always use the same two paths.
+The source snapshots are local development inputs rather than repository
+artifacts. Create or refresh them outside Git, verify that each SQLite copy is
+complete, and keep the attachment paths stable in your local dbt profile.
 
 ## Running the project
 
