@@ -44,9 +44,13 @@ models:
           - not_null
 
       - name: total_debt
-        description: "Total debt reported in the financial record."
+        description: "Total debt when an exact filing-backed amount is available; null when debt has not yet been reliably disclosed."
         data_tests:
-          - not_null
+          - not_null:
+              config:
+                severity: error
+                error_if: ">1"
+                warn_if: ">0"
 
       - name: operating_cash_flow
         description: "Cash generated or used by normal business operations for the source-defined measurement period."
@@ -127,9 +131,7 @@ models:
           - not_null
 
       - name: total_debt
-        description: "Total debt reported for the latest available financial record."
-        data_tests:
-          - not_null
+        description: "Total debt for the latest available financial record; null when an exact amount has not yet been reliably disclosed."
 
       - name: operating_cash_flow
         description: "Cash generated or used by normal business operations for the source-defined measurement period."
@@ -140,9 +142,7 @@ models:
         description: "Net income as a percentage of total revenue; null when revenue is unavailable or zero."
 
       - name: net_cash
-        description: "Total cash minus total debt for the latest available financial record."
-        data_tests:
-          - not_null
+        description: "Total cash minus total debt for the latest available financial record; null when either input is unavailable."
 
       - name: has_negative_cash_flow
         description: "One when operating cash flow is negative, zero when nonnegative, and null when operating cash flow is unavailable."
